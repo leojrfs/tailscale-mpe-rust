@@ -10,7 +10,7 @@
 //! both send pings to peers and answer incoming pings with pongs.
 
 use alloc::vec::Vec;
-use core::net::{Ipv4Addr, SocketAddr};
+use core::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use anyhow::{bail, Result};
 use crypto_box::aead::{Aead, Nonce};
@@ -176,7 +176,12 @@ fn bytes_to_addr(b: &[u8]) -> Option<SocketAddr> {
             port,
         )));
     }
-    None // skip native IPv6
+    let octets: [u8; 16] = b[..16].try_into().ok()?;
+    let ip = Ipv6Addr::from(octets);
+    if ip.is_unspecified() {
+        return None;
+    }
+    Some(SocketAddr::from((ip, port)))
 }
 
 fn salsabox(my_priv: &[u8; 32], peer_pub: &[u8; 32]) -> SalsaBox {

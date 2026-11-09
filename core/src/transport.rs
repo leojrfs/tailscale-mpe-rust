@@ -31,13 +31,27 @@ pub fn connect_and_upgrade(
     host: &str,
     handshake_b64: &str,
 ) -> Result<Conn> {
+    connect_and_upgrade_path(stream, host, handshake_b64, "/ts2021")
+}
+
+/// Upgrade through a control-server URL prefix without changing encrypted RPC paths.
+pub fn connect_and_upgrade_path(
+    stream: Box<dyn ByteStream>,
+    host: &str,
+    handshake_b64: &str,
+    path: &str,
+) -> Result<Conn> {
+    anyhow::ensure!(
+        path.starts_with('/') && !path.contains(['\r', '\n']) && !host.contains(['\r', '\n']),
+        "invalid HTTP upgrade target"
+    );
     let mut conn = Conn {
         stream,
         rx: Vec::new(),
     };
 
     let req = format!(
-        "POST /ts2021 HTTP/1.1\r\n\
+        "POST {path} HTTP/1.1\r\n\
          Host: {host}\r\n\
          Upgrade: {UPGRADE_VALUE}\r\n\
          Connection: upgrade\r\n\

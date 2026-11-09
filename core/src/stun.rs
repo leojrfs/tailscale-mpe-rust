@@ -3,7 +3,7 @@
 //! NAT traversal. We only build a Binding Request and parse XOR-MAPPED-ADDRESS
 //! (falling back to the legacy MAPPED-ADDRESS) from the Binding Response.
 
-use core::net::SocketAddrV4;
+use core::net::{Ipv6Addr, SocketAddr, SocketAddrV4};
 
 use anyhow::{bail, Result};
 
@@ -33,6 +33,14 @@ pub fn binding_request() -> ([u8; 20], [u8; 12]) {
 /// Parse a STUN Binding Response and return the mapped (public) IPv4 address.
 /// Verifies the magic cookie and that the transaction id matches our request.
 pub fn parse_response(buf: &[u8], txid: &[u8; 12]) -> Result<SocketAddrV4> {
+    match parse_response_addr(buf, txid)? {
+        SocketAddr::V4(addr) => Ok(addr),
+        SocketAddr::V6(_) => bail!("expected IPv4 STUN response"),
+    }
+}
+
+/// Decode IPv4 or IPv6 reflexive addresses using the validated transaction ID.
+pub fn parse_response_addr(buf: &[u8], txid: &[u8; 12]) -> Result<SocketAddr> {
     if buf.len() < 20 {
         bail!("STUN response too short ({} bytes)", buf.len());
     }
@@ -67,13 +75,31 @@ pub fn parse_response(buf: &[u8], txid: &[u8; 12]) -> Result<SocketAddrV4> {
         let val = &buf[val_start..val_end];
         match atype {
             ATTR_XOR_MAPPED_ADDRESS => {
+                if val.len() >= 20 && val[1] == 2 {
+                    let mut ip: [u8; 16] = val[4..20].try_into().unwrap();
+                    let mut mask = [0; 16];
+                    mask[..4].copy_from_slice(&MAGIC_COOKIE.to_be_bytes());
+                    mask[4..].copy_from_slice(txid);
+                    for (byte, mask) in ip.iter_mut().zip(mask) {
+                        *byte ^= mask;
+                    }
+                    let port = u16::from_be_bytes([val[2], val[3]]) ^ (MAGIC_COOKIE >> 16) as u16;
+                    return Ok(SocketAddr::from((Ipv6Addr::from(ip), port)));
+                }
                 if let Some(addr) = parse_xor_mapped(val) {
-                    return Ok(addr);
+                    return Ok(addr.into());
                 }
             }
             ATTR_MAPPED_ADDRESS => {
+                if val.len() >= 20 && val[1] == 2 {
+                    let ip: [u8; 16] = val[4..20].try_into().unwrap();
+                    return Ok(SocketAddr::from((
+                        Ipv6Addr::from(ip),
+                        u16::from_be_bytes([val[2], val[3]]),
+                    )));
+                }
                 if let Some(addr) = parse_mapped(val) {
-                    return Ok(addr);
+                    return Ok(addr.into());
                 }
             }
             _ => {}
