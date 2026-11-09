@@ -243,3 +243,47 @@ fn h2_rejects_oversized_payload_from_header_without_waiting_for_body() {
     let (mut session, _) = crate::h2::H2::start(conn, transport, "test".into()).unwrap();
     assert!(alloc::format!("{}", session.read_data(1).unwrap_err()).contains("negotiated limit"));
 }
+
+#[test]
+fn discovery_round_trips_native_ipv6_endpoints() {
+    let a = [1; 32];
+    let b = [2; 32];
+    let public = |k: [u8; 32]| {
+        x25519_dalek::PublicKey::from(&x25519_dalek::StaticSecret::from(k)).to_bytes()
+    };
+    let endpoint = "[2001:db8::1234]:4321".parse().unwrap();
+    let sealed = crate::disco::seal(
+        &a,
+        &public(a),
+        &public(b),
+        &crate::disco::call_me_maybe_plaintext(&[endpoint]),
+    )
+    .unwrap();
+    assert_eq!(
+        crate::disco::open(&b, &sealed).unwrap().endpoints,
+        vec![endpoint]
+    );
+    let (_, id) = crate::stun::binding_request();
+    let mut response = vec![0; 44];
+    response[..2].copy_from_slice(&0x0101u16.to_be_bytes());
+    response[2..4].copy_from_slice(&24u16.to_be_bytes());
+    response[4..8].copy_from_slice(&crate::stun::MAGIC_COOKIE.to_be_bytes());
+    response[8..20].copy_from_slice(&id);
+    response[21] = 0x20;
+    response[23] = 20;
+    response[25] = 2;
+    response[26..28].copy_from_slice(&(4321u16 ^ 0x2112).to_be_bytes());
+    let ip: core::net::Ipv6Addr = "2001:db8::1234".parse().unwrap();
+    let mut bytes = ip.octets();
+    let mut mask = [0; 16];
+    mask[..4].copy_from_slice(&crate::stun::MAGIC_COOKIE.to_be_bytes());
+    mask[4..].copy_from_slice(&id);
+    for (b, m) in bytes.iter_mut().zip(mask) {
+        *b ^= m;
+    }
+    response[28..].copy_from_slice(&bytes);
+    assert_eq!(
+        crate::stun::parse_response_addr(&response, &id).unwrap(),
+        endpoint
+    );
+}
