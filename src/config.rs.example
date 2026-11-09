@@ -20,7 +20,7 @@ pub const TS2021_PORT: u16 = 80;
 pub const KEY_ENDPOINT_VER: u32 = 130;
 
 /// Capability/protocol version advertised in register + map JSON.
-pub const CAPABILITY_VERSION: u32 = 90;
+pub const CAPABILITY_VERSION: u32 = 130;
 
 /// Pre-auth key (tskey-auth-...) for headless/fleet provisioning. Empty = fall
 /// back to interactive browser auth. Only used when the `authkey` feature is on.

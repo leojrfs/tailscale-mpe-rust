@@ -15,6 +15,8 @@ use crate::transport::Conn;
 const PREFACE: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
 const EARLY_MAGIC: &[u8] = b"\xff\xff\xffTS";
 
+const FT_PING: u8 = 6;
+const FT_RST_STREAM: u8 = 3;
 const FT_DATA: u8 = 0x0;
 const FT_HEADERS: u8 = 0x1;
 const FT_SETTINGS: u8 = 0x4;
@@ -40,7 +42,13 @@ impl H2 {
     /// HTTP/2 startup: consume any early payload, exchange SETTINGS. `authority` is
     /// the control host for the `:authority` pseudo-header.
     pub fn start(conn: Conn, tr: Transport, authority: String) -> Result<(Self, Option<Vec<u8>>)> {
-        let mut h = H2 { conn, tr, rx: Vec::new(), next_stream: 1, authority };
+        let mut h = H2 {
+            conn,
+            tr,
+            rx: Vec::new(),
+            next_stream: 1,
+            authority,
+        };
 
         // Client preface + our SETTINGS.
         let mut hello = Vec::new();
@@ -50,8 +58,14 @@ impl H2 {
             0,
             0,
             &[
-                0x00, 0x02, 0x00, 0x00, 0x00, 0x00, // ENABLE_PUSH = 0
-                0x00, 0x05, // MAX_FRAME_SIZE
+                0x00,
+                0x02,
+                0x00,
+                0x00,
+                0x00,
+                0x00, // ENABLE_PUSH = 0
+                0x00,
+                0x05, // MAX_FRAME_SIZE
                 (MAX_FRAME_SIZE >> 24) as u8,
                 (MAX_FRAME_SIZE >> 16) as u8,
                 (MAX_FRAME_SIZE >> 8) as u8,
@@ -74,6 +88,10 @@ impl H2 {
                     break;
                 }
                 FT_WINDOW_UPDATE | FT_HEADERS | FT_DATA => continue,
+                FT_PING if fr.payload.len() == 8 && fr.flags & FL_ACK == 0 => {
+                    h.send(&frame(FT_PING, FL_ACK, 0, &fr.payload))?;
+                }
+                FT_RST_STREAM => bail!("HTTP/2 stream reset"),
                 FT_GOAWAY => bail!("server GOAWAY during startup"),
                 _ => continue,
             }
@@ -152,6 +170,10 @@ impl H2 {
                         self.send(&frame(FT_SETTINGS, FL_ACK, 0, &[]))?;
                     }
                 }
+                FT_PING if fr.payload.len() == 8 && fr.flags & FL_ACK == 0 => {
+                    self.send(&frame(FT_PING, FL_ACK, 0, &fr.payload))?;
+                }
+                FT_RST_STREAM => bail!("HTTP/2 stream reset"),
                 FT_GOAWAY => bail!("server GOAWAY on map stream"),
                 _ => {}
             }
@@ -189,6 +211,10 @@ impl H2 {
                         self.send(&frame(FT_SETTINGS, FL_ACK, 0, &[]))?;
                     }
                 }
+                FT_PING if fr.payload.len() == 8 && fr.flags & FL_ACK == 0 => {
+                    self.send(&frame(FT_PING, FL_ACK, 0, &fr.payload))?;
+                }
+                FT_RST_STREAM => bail!("HTTP/2 stream reset"),
                 FT_GOAWAY => bail!("server GOAWAY (status so far {status})"),
                 _ => {}
             }
@@ -239,6 +265,7 @@ impl H2 {
         let hdr = self.read_exact(9)?;
         if &hdr[..5] == EARLY_MAGIC {
             let ep_len = u32::from_be_bytes([hdr[5], hdr[6], hdr[7], hdr[8]]) as usize;
+            anyhow::ensure!(ep_len <= 65536, "early payload too large");
             let json = self.read_exact(ep_len)?;
             Ok(Some(json))
         } else {
@@ -251,11 +278,37 @@ impl H2 {
     fn read_frame(&mut self) -> Result<Frame> {
         let hdr = self.read_exact(9)?;
         let len = ((hdr[0] as usize) << 16) | ((hdr[1] as usize) << 8) | hdr[2] as usize;
+        anyhow::ensure!(
+            len <= MAX_FRAME_SIZE as usize,
+            "HTTP/2 frame exceeds negotiated limit"
+        );
         let typ = hdr[3];
         let flags = hdr[4];
         let stream_id = u32::from_be_bytes([hdr[5], hdr[6], hdr[7], hdr[8]]) & 0x7fff_ffff;
-        let payload = if len > 0 { self.read_exact(len)? } else { Vec::new() };
-        Ok(Frame { typ, flags, stream_id, payload })
+        match typ {
+            FT_PING => anyhow::ensure!(stream_id == 0 && len == 8, "invalid HTTP/2 PING"),
+            FT_SETTINGS => anyhow::ensure!(
+                stream_id == 0 && len % 6 == 0 && (flags & FL_ACK == 0 || len == 0),
+                "invalid HTTP/2 SETTINGS"
+            ),
+            FT_WINDOW_UPDATE => anyhow::ensure!(len == 4, "invalid HTTP/2 WINDOW_UPDATE"),
+            FT_RST_STREAM => {
+                anyhow::ensure!(stream_id != 0 && len == 4, "invalid HTTP/2 RST_STREAM")
+            }
+            FT_DATA | FT_HEADERS => anyhow::ensure!(stream_id != 0, "invalid HTTP/2 stream ID"),
+            _ => {}
+        }
+        let payload = if len > 0 {
+            self.read_exact(len)?
+        } else {
+            Vec::new()
+        };
+        Ok(Frame {
+            typ,
+            flags,
+            stream_id,
+            payload,
+        })
     }
 }
 

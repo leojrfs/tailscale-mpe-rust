@@ -144,7 +144,11 @@ fn parse_cidr(s: &str) -> Option<Cidr> {
     };
     let v: Ipv4Addr = ip.parse().ok()?;
     let net = u32::from_be_bytes(v.octets());
-    let mask = if bits == 0 { 0 } else { u32::MAX << (32 - bits.min(32)) };
+    let mask = if bits == 0 {
+        0
+    } else {
+        u32::MAX << (32 - bits.min(32))
+    };
     Some((net, mask))
 }
 

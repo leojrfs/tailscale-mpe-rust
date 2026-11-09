@@ -149,7 +149,7 @@ impl TcpServer {
         t[2..4].copy_from_slice(&c.client_port.to_be_bytes());
         t[4..8].copy_from_slice(&c.snd_nxt.to_be_bytes());
         t[8..12].copy_from_slice(&c.rcv_nxt.to_be_bytes());
-        t[12] = (5 << 4) | 0; // data offset = 5 words (20 bytes), no options
+        t[12] = 5 << 4; // data offset = 5 words (20 bytes), no options
         t[13] = flags;
         t[14..16].copy_from_slice(&64240u16.to_be_bytes()); // window
         t[20..].copy_from_slice(payload);

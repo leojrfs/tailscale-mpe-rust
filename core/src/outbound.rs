@@ -21,7 +21,13 @@ const PSH: u8 = 0x08;
 const ACK: u8 = 0x10;
 
 /// Build an IPv4 ICMP echo request (ping out).
-pub fn icmp_echo_request(src: Ipv4Addr, dst: Ipv4Addr, ident: u16, seq: u16, payload: &[u8]) -> Vec<u8> {
+pub fn icmp_echo_request(
+    src: Ipv4Addr,
+    dst: Ipv4Addr,
+    ident: u16,
+    seq: u16,
+    payload: &[u8],
+) -> Vec<u8> {
     let mut icmp = Vec::with_capacity(8 + payload.len());
     icmp.extend_from_slice(&[8, 0, 0, 0]); // type 8 (echo request), code 0, csum placeholder
     icmp.extend_from_slice(&ident.to_be_bytes());
@@ -33,7 +39,13 @@ pub fn icmp_echo_request(src: Ipv4Addr, dst: Ipv4Addr, ident: u16, seq: u16, pay
 }
 
 /// Build an IPv4 UDP datagram (e.g. push telemetry to a peer:port).
-pub fn udp_datagram(src: Ipv4Addr, dst: Ipv4Addr, sport: u16, dport: u16, payload: &[u8]) -> Vec<u8> {
+pub fn udp_datagram(
+    src: Ipv4Addr,
+    dst: Ipv4Addr,
+    sport: u16,
+    dport: u16,
+    payload: &[u8],
+) -> Vec<u8> {
     let mut udp = Vec::with_capacity(8 + payload.len());
     udp.extend_from_slice(&sport.to_be_bytes());
     udp.extend_from_slice(&dport.to_be_bytes());

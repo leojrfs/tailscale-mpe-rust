@@ -154,7 +154,13 @@ pub fn open(my_disco_priv: &[u8; 32], wire: &[u8]) -> Result<Incoming> {
     } else {
         None
     };
-    Ok(Incoming { sender_disco_pub: sender, msg_type: pt[0], txid, endpoints, observed_src })
+    Ok(Incoming {
+        sender_disco_pub: sender,
+        msg_type: pt[0],
+        txid,
+        endpoints,
+        observed_src,
+    })
 }
 
 /// Decode an 18-byte AddrPort (16-byte IP ‖ 2-byte port BE) — IPv4 only.
@@ -165,7 +171,10 @@ fn bytes_to_addr(b: &[u8]) -> Option<SocketAddr> {
     let port = u16::from_be_bytes([b[16], b[17]]);
     // IPv4-mapped IPv6: ::ffff:a.b.c.d
     if b[..10].iter().all(|&x| x == 0) && b[10] == 0xff && b[11] == 0xff {
-        return Some(SocketAddr::from((Ipv4Addr::new(b[12], b[13], b[14], b[15]), port)));
+        return Some(SocketAddr::from((
+            Ipv4Addr::new(b[12], b[13], b[14], b[15]),
+            port,
+        )));
     }
     None // skip native IPv6
 }

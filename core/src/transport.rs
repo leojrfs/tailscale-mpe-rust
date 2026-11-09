@@ -31,7 +31,10 @@ pub fn connect_and_upgrade(
     host: &str,
     handshake_b64: &str,
 ) -> Result<Conn> {
-    let mut conn = Conn { stream, rx: Vec::new() };
+    let mut conn = Conn {
+        stream,
+        rx: Vec::new(),
+    };
 
     let req = format!(
         "POST /ts2021 HTTP/1.1\r\n\
@@ -41,14 +44,19 @@ pub fn connect_and_upgrade(
          X-Tailscale-Handshake: {handshake_b64}\r\n\
          Content-Length: 0\r\n\r\n"
     );
-    conn.stream.write_all(req.as_bytes()).map_err(|_| anyhow::anyhow!("upgrade write"))?;
+    conn.stream
+        .write_all(req.as_bytes())
+        .map_err(|_| anyhow::anyhow!("upgrade write"))?;
 
     // Read until end of HTTP response headers.
     let mut head = Vec::new();
     let mut tmp = [0u8; 512];
     let body_start;
     loop {
-        let n = conn.stream.read(&mut tmp).map_err(|_| anyhow::anyhow!("upgrade read"))?;
+        let n = conn
+            .stream
+            .read(&mut tmp)
+            .map_err(|_| anyhow::anyhow!("upgrade read"))?;
         if n == 0 {
             bail!("connection closed during upgrade");
         }
@@ -81,7 +89,10 @@ impl Conn {
     fn fill_to(&mut self, n: usize) -> Result<()> {
         let mut tmp = [0u8; 2048];
         while self.rx.len() < n {
-            let r = self.stream.read(&mut tmp).map_err(|_| anyhow::anyhow!("stream read"))?;
+            let r = self
+                .stream
+                .read(&mut tmp)
+                .map_err(|_| anyhow::anyhow!("stream read"))?;
             if r == 0 {
                 bail!("connection closed (wanted {n}, have {})", self.rx.len());
             }
@@ -102,12 +113,19 @@ impl Conn {
         let hdr = self.take(3)?;
         let typ = hdr[0];
         let len = u16::from_be_bytes([hdr[1], hdr[2]]) as usize;
+        anyhow::ensure!(len <= 4093, "Noise frame exceeds 4096-byte limit");
+        anyhow::ensure!(
+            typ != 4 || len >= 16,
+            "Noise record shorter than authentication tag"
+        );
         let payload = self.take(len)?;
         Ok((typ, payload))
     }
 
     pub fn write_all(&mut self, data: &[u8]) -> Result<()> {
-        self.stream.write_all(data).map_err(|_| anyhow::anyhow!("stream write"))
+        self.stream
+            .write_all(data)
+            .map_err(|_| anyhow::anyhow!("stream write"))
     }
 }
 
@@ -118,7 +136,7 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 /// Minimal standard base64 (with padding) — used for the handshake header.
 pub fn base64_std(data: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b = [
             chunk[0],
@@ -128,8 +146,16 @@ pub fn base64_std(data: &[u8]) -> String {
         let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | (b[2] as u32);
         out.push(T[((n >> 18) & 0x3f) as usize] as char);
         out.push(T[((n >> 12) & 0x3f) as usize] as char);
-        out.push(if chunk.len() > 1 { T[((n >> 6) & 0x3f) as usize] as char } else { '=' });
-        out.push(if chunk.len() > 2 { T[(n & 0x3f) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 1 {
+            T[((n >> 6) & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            T[(n & 0x3f) as usize] as char
+        } else {
+            '='
+        });
     }
     out
 }

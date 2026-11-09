@@ -49,7 +49,11 @@ pub fn parse_response(buf: &[u8], txid: &[u8; 12]) -> Result<SocketAddrV4> {
     }
 
     let msg_len = u16::from_be_bytes([buf[2], buf[3]]) as usize;
-    let end = (20 + msg_len).min(buf.len());
+    anyhow::ensure!(
+        msg_len % 4 == 0 && 20 + msg_len == buf.len(),
+        "invalid STUN message length"
+    );
+    let end = 20 + msg_len;
 
     let mut i = 20;
     while i + 4 <= end {

@@ -39,3 +39,16 @@ pub mod noise;
 pub mod transport;
 
 pub mod h2;
+
+/// Complete WireGuard protocol and timers for adapters with the `wireguard` feature.
+#[cfg(feature = "wireguard")]
+pub mod wireguard {
+    pub use boringtun::{
+        noise::{handshake, rate_limiter::RateLimiter, Packet, Tunn, TunnResult},
+        x25519,
+    };
+}
+pub mod filter;
+#[cfg(test)]
+extern crate std;
+

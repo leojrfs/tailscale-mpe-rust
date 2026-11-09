@@ -117,7 +117,11 @@ pub fn consume_initiation(
     our_index: u32,
 ) -> Result<([u8; RESP_LEN], Tunnel, [u8; 32])> {
     ensure!(init.len() >= INIT_LEN, "WG init too short ({})", init.len());
-    ensure!(init[0] == MSG_INITIATION, "not a WG initiation (type {})", init[0]);
+    ensure!(
+        init[0] == MSG_INITIATION,
+        "not a WG initiation (type {})",
+        init[0]
+    );
     let their_index = u32::from_le_bytes([init[4], init[5], init[6], init[7]]);
     let e_i: [u8; 32] = init[8..40].try_into().unwrap();
     let enc_static = &init[40..88];
@@ -132,7 +136,8 @@ pub fn consume_initiation(
 
     let (c1, k) = kdf2(&c, &dh(our_static_priv, &e_i));
     c = c1;
-    let s_i_vec = open(&k, 0, enc_static, &h).map_err(|_| anyhow::anyhow!("WG init static decrypt"))?;
+    let s_i_vec =
+        open(&k, 0, enc_static, &h).map_err(|_| anyhow::anyhow!("WG init static decrypt"))?;
     let s_i: [u8; 32] = s_i_vec
         .as_slice()
         .try_into()
@@ -190,8 +195,16 @@ pub fn consume_initiation(
 impl Handshake {
     /// Consume the 92-byte handshake response and derive the transport tunnel.
     pub fn consume_response(self, resp: &[u8]) -> Result<Tunnel> {
-        ensure!(resp.len() >= RESP_LEN, "WG response too short ({})", resp.len());
-        ensure!(resp[0] == MSG_RESPONSE, "not a WG response (type {})", resp[0]);
+        ensure!(
+            resp.len() >= RESP_LEN,
+            "WG response too short ({})",
+            resp.len()
+        );
+        ensure!(
+            resp[0] == MSG_RESPONSE,
+            "not a WG response (type {})",
+            resp[0]
+        );
         let their_index = u32::from_le_bytes([resp[4], resp[5], resp[6], resp[7]]);
         let recv_index = u32::from_le_bytes([resp[8], resp[9], resp[10], resp[11]]);
         ensure!(
@@ -214,7 +227,8 @@ impl Handshake {
         c = c1;
         h = hash(&[&h, &tau]);
 
-        let pt = open(&k, 0, enc_empty, &h).map_err(|_| anyhow::anyhow!("WG response auth failed"))?;
+        let pt =
+            open(&k, 0, enc_empty, &h).map_err(|_| anyhow::anyhow!("WG response auth failed"))?;
         ensure!(pt.is_empty(), "WG response payload not empty");
 
         // Initiator: first transport key sends, second receives.
@@ -279,7 +293,8 @@ impl Tunnel {
         ensure!(pkt[0] == MSG_TRANSPORT, "not a WG transport packet");
         let counter = u64::from_le_bytes(pkt[8..16].try_into().unwrap());
         let ct = &pkt[16..];
-        open(&self.recv_key, counter, ct, &[]).map_err(|_| anyhow::anyhow!("WG transport auth failed"))
+        open(&self.recv_key, counter, ct, &[])
+            .map_err(|_| anyhow::anyhow!("WG transport auth failed"))
     }
 }
 

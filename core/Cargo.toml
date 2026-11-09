@@ -5,8 +5,10 @@ edition = "2021"
 rust-version = "1.77"
 description = "Portable no_std+alloc Tailscale client core (protocol + data plane), platform I/O behind traits"
 
-[lib]
-harness = false
+[features]
+# Linux/desktop adapters can use the complete WireGuard state machine. The
+# allocation-only embedded core keeps its original dependency footprint.
+wireguard = ["dep:boringtun"]
 
 # no_std + alloc. Platform I/O (UDP/TCP/TLS), storage and clock are provided by the
 # host via the traits in `platform`. RNG comes from `getrandom`, which has backends
@@ -34,3 +36,5 @@ snow = { version = "0.10", default-features = false, features = [
     "use-getrandom",
     "risky-raw-split",
 ] }
+
+boringtun = { version = "0.7.1", default-features = false, optional = true }
