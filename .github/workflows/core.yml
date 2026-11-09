@@ -1,0 +1,26 @@
+name: core
+on:
+  push:
+    branches: [leojrfs/forwarder-core]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: self-hosted
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          engine=$(command -v docker || command -v podman)
+          "$engine" run --rm -v "$PWD:/src:ro" -w /src \
+            -e RUSTUP_TOOLCHAIN=1.93.0 -e RUSTFLAGS= -e CARGO_TARGET_DIR=/tmp/target \
+            ghcr.io/rust-cross/cargo-zigbuild:0.24.1 sh -ec '
+              rustup toolchain install 1.93.0 --profile minimal --component rustfmt,clippy
+              host=$(rustc -vV | sed -n "s/^host: //p")
+              cargo fmt -p tailscale-core -- --check
+              cargo check --locked -p tailscale-core --target "$host" --no-default-features
+              cargo test --locked -p tailscale-core --target "$host" --features wireguard
+              cargo clippy --locked -p tailscale-core --target "$host" --all-targets --features wireguard -- -D warnings
+            '
