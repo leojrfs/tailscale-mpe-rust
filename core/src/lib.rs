@@ -52,3 +52,5 @@ pub mod filter;
 #[cfg(test)]
 extern crate std;
 
+#[cfg(test)]
+mod tests;
